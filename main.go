@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
 	"os"
@@ -22,8 +23,8 @@ type DownPorgress struct {
 //	return
 //}
 
-// 实现一个文件下载函数
-func downfile(url, filename string) {
+// 实现一个Pixiv文件下载器
+func downfile(url, filename string) (code, message, downurl string) {
 	// 构建一个http请求downtool，携带pixiv的Referer
 	downrequests := http.Client{}
 	pixivRequest, _ := http.NewRequest("GET", url, nil)
@@ -33,47 +34,65 @@ func downfile(url, filename string) {
 	//发起请求，取得信息
 	response, err := downrequests.Do(pixivRequest)
 	if err != nil {
-		fmt.Println("下载发生错误，错误原因:", err)
-		return
+
+		return "500", "下载发生错误，错误原因:" + err.Error(), ""
 	}
 	if response.StatusCode == 200 {
 		file, err := os.Create(filename)
 		if err != nil {
-			fmt.Printf("创建文件失败，错误如下:%s\n", err.Error())
-			return
+			return "500", "创建文件失败，错误如下:" + err.Error(), ""
+
 		}
 		defer file.Close()
 		n, err := io.Copy(file, response.Body)
-
 		if err != nil {
-			fmt.Printf("写入文件失败，失败原因%s\n", err.Error())
-			return
+			return "500", "写入文件失败，错误如下:" + err.Error(), ""
+
 		}
-		fmt.Printf("下载文件成功，文件名%s,写入大小:%d\n", filename, n)
+		return "200", "文件下载成功，文件大小" + string(n), "这个功能海米写出来"
+
 	} else if response.StatusCode == 403 { //处理下因为超载导致的问题
-		fmt.Printf("下载文件失败，Pixiv返回403\n")
+		return "403", "读取PIXIV失败，错误如下:" + err.Error(), ""
 	}
 
 }
 
+// 实现一个Pixiv链接信息解析
+func parsPixivPid(pid string) {
+
+}
 func main() {
-	for {
-		var url string
-		var filename string
-		fmt.Printf("请输入需要下载的Pixiv图片地址(请提供原始地址):\n")
-		_, err := fmt.Scan(&url)
-		if err != nil {
-			fmt.Printf("发生错误，请输入正确的值")
-			return
-		}
-		fmt.Printf("请输入保存名称:\n")
-		_, err = fmt.Scan(&filename)
-		if err != nil {
-			fmt.Printf("发生错误，请输入正确的值")
-			return
-		}
-		fmt.Println("下载地址:", url)
-		fmt.Printf("保存文件:%s.png", filename)
-		downfile(url, (filename + ".png"))
-	}
+	server := gin.Default()
+	server.GET("/ping", func(context *gin.Context) {
+		context.JSON(http.StatusOK, gin.H{
+			"code":    "200",
+			"message": "success",
+		})
+	})
+	server.Run("0.0.0.0:4560")
+	//实现一个GIN路由组，该组负责接收下载的文件
+	pixivServer := server.Group("/pixiv")
+	pixivServer.GET("/get/down/img", func(context *gin.Context) {
+		pid := context.Query("pid")
+
+	})
+	//for {
+	//	var url string
+	//	var filename string
+	//	fmt.Printf("请输入需要下载的Pixiv图片地址(请提供原始地址):\n")
+	//	_, err := fmt.Scan(&url)
+	//	if err != nil {
+	//		fmt.Printf("发生错误，请输入正确的值")
+	//		return
+	//	}
+	//	fmt.Printf("请输入保存名称:\n")
+	//	_, err = fmt.Scan(&filename)
+	//	if err != nil {
+	//		fmt.Printf("发生错误，请输入正确的值")
+	//		return
+	//	}
+	//	fmt.Println("下载地址:", url)
+	//	fmt.Printf("保存文件:%s.png", filename)
+	//	downfile(url, (filename + ".png"))
+	//}
 }
