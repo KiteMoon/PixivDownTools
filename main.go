@@ -59,34 +59,73 @@ func downfile(url, filename string) (code, message, downurl string) {
 	return "200", "开发中", "开发中"
 }
 
-// 实现一个Pixiv链接信息解析
-func parsPixivPid(pid string) (code, message string) {
+// 实现一个Pixiv链接信息解析（外部版本）
+func parsPixivInfo(pid string) (code, message string, responBody parePixivReturn) {
+	returnInfo := new(parePixivReturn)
 	if pid == "" {
-		return "400", fmt.Sprint("错误，无效的请求")
+		return "400", fmt.Sprint("错误，无效的请求"), *returnInfo
 
 	}
 	parsUrl := fmt.Sprint("https://www.pixiv.net/ajax/illust/", pid)
 	getParsClient := http.Client{}
 	getParsRequests, err := http.NewRequest("GET", parsUrl, nil)
 	if err != nil {
-		return "500", fmt.Sprint("错误，构建解析请求失败，错误信息:", err.Error())
+		return "500", fmt.Sprint("错误，构建解析请求失败，错误信息:", err.Error()), *returnInfo
 	}
 	getParsRequests.Header.Add("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.41 Safari/537.36 Edg/90.0.818.22")
 	pareRespon, err := getParsClient.Do(getParsRequests)
 	if err != nil {
-		return "", ""
+		return "500", fmt.Sprint("错误，发起请求失败，错误信息:", err.Error()), *returnInfo
 	}
 	all, err := ioutil.ReadAll(pareRespon.Body)
 	if err != nil {
-		return "500", fmt.Sprint("错误，解析返回信息失败，错误信息:", err.Error())
+		return "500", fmt.Sprint("错误，解析返回信息失败，错误信息:", err.Error()), *returnInfo
 	}
 	responJson := parePixivJson{}
 	err = json.Unmarshal(all, &responJson)
 	if err != nil {
-		return "500", fmt.Sprint("错误，解析json信息失败，错误信息:", err.Error())
+		return "500", fmt.Sprint("错误，解析json信息失败，错误信息:", err.Error()), *returnInfo
 	}
 	fmt.Println(responJson)
-	return "200", string(all)
+
+	returnInfo.Pid = responJson.Body.IllustId
+	returnInfo.Name = responJson.Body.Title
+	returnInfo.UpdateTime = responJson.Body.UploadDate
+	returnInfo.Downurl = pixivDownUrl{
+		Mini:     responJson.Body.Urls.Mini,
+		Original: responJson.Body.Urls.Original,
+	}
+	returnInfo.Width = int64(responJson.Body.Width)
+	returnInfo.Height = int64(responJson.Body.Height)
+
+	return "200", "OK", *returnInfo
+}
+
+// 实现一个Pixiv链接信息解析（内部版本）
+func parPixivPid(pid string) (code, url string) {
+	parsUrl := fmt.Sprint("https://www.pixiv.net/ajax/illust/", pid)
+	pareRequestsClient := http.Client{}
+	pareRequests, err := http.NewRequest("GET", parsUrl, nil)
+	if err != nil {
+		return "500", "解析失败，无法构建请求"
+	}
+	responDo, err := pareRequestsClient.Do(pareRequests)
+	if err != nil {
+		return "500", "发起请求失败，请检查构建问题"
+	}
+	respon, err := ioutil.ReadAll(responDo.Body)
+	if err != nil {
+		return "500", "解析字节流失败"
+	}
+	responJson := parePixivJson{}
+	err = json.Unmarshal(respon, &responJson)
+	if err != nil {
+		return "500", "解析json失败"
+	}
+	if responJson.Body.Urls.Original == "" {
+		return "500", "处理失败，解析链接不存在"
+	}
+	return "200", responJson.Body.Urls.Original
 }
 func main() {
 	server := gin.Default()
@@ -98,16 +137,45 @@ func main() {
 	})
 	//实现一个GIN路由组，该组负责接收下载的文件
 	pixivServer := server.Group("/pixiv")
+	//pixivServer.GET("/get/down/img", func(context *gin.Context) {
+	//	fmt.Printf("进入")
+	//	pid := context.Query("pid")
+	//	fmt.Printf(pid)
+	//	resultCode, message, respone := parsPixivInfo(pid)
+	//	context.JSON(200, gin.H{
+	//		"code":    resultCode,
+	//		"message": message,
+	//		"body":    respone,
+	//	})
+	//})
 	pixivServer.GET("/get/down/img", func(context *gin.Context) {
-		fmt.Printf("进入")
 		pid := context.Query("pid")
-		fmt.Printf(pid)
-		resultCode, message := parsPixivPid(pid)
+		code, downurl := parPixivPid(pid)
+		if code != "200" {
+			context.JSON(200, gin.H{
+				"code":    "400",
+				"message": "获取指定图片失败",
+			})
+			context.Abort()
+			return
+		}
+		code, message, _ := downfile(downurl, pid+".png")
+		if code != "200" {
+			context.JSON(200, gin.H{
+				"code":    "400",
+				"message": "获取指定图片失败",
+			})
+			context.Abort()
+			return
+		}
 		context.JSON(200, gin.H{
-			"code":    resultCode,
-			"message": message,
+			"code":    "200",
+			"message": "获取图片成功",
+			"body":    message,
 		})
+		context.Abort()
 	})
+
 	server.Run("0.0.0.0:4560")
 
 	//for {

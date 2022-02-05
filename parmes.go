@@ -1,23 +1,21 @@
 package main
 
-import "time"
-
 type parePixivJson struct {
 	Error   bool   `json:"error"`
 	Message string `json:"message"`
 	Body    struct {
-		IllustId      string    `json:"illustId"`
-		IllustTitle   string    `json:"illustTitle"`
-		IllustComment string    `json:"illustComment"`
-		Id            string    `json:"id"`
-		Title         string    `json:"title"`
-		Description   string    `json:"description"`
-		IllustType    int       `json:"illustType"`
-		CreateDate    time.Time `json:"createDate"`
-		UploadDate    time.Time `json:"uploadDate"`
-		Restrict      int       `json:"restrict"`
-		XRestrict     int       `json:"xRestrict"`
-		Sl            int       `json:"sl"`
+		IllustId      string `json:"illustId"`
+		IllustTitle   string `json:"illustTitle"`
+		IllustComment string `json:"illustComment"`
+		Id            string `json:"id"`
+		Title         string `json:"title"`
+		Description   string `json:"description"`
+		IllustType    int    `json:"illustType"`
+		CreateDate    string `json:"createDate"`
+		UploadDate    string `json:"uploadDate"`
+		Restrict      int    `json:"restrict"`
+		XRestrict     int    `json:"xRestrict"`
+		Sl            int    `json:"sl"`
 		Urls          struct {
 			Mini     string `json:"mini"`
 			Thumb    string `json:"thumb"`
@@ -65,4 +63,17 @@ type parePixivJson struct {
 		CommentOff              int           `json:"commentOff"`
 		NoLoginData             interface{}   `json:"noLoginData"`
 	} `json:"body"`
+}
+
+type parePixivReturn struct {
+	Pid        string
+	Name       string
+	UpdateTime string
+	Downurl    pixivDownUrl
+	Width      int64
+	Height     int64
+}
+type pixivDownUrl struct {
+	Mini     string
+	Original string
 }
