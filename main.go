@@ -20,7 +20,7 @@ import (
 //	return
 //}
 var (
-	url = ""
+	pixivUserDownUrlRoot = ""
 )
 
 // 配置文件读取器
@@ -34,12 +34,14 @@ func init() {
 		panic("ERROR:NOT HAVE CONFIG")
 	}
 	fmt.Println("读取配置文件成功，正在处理")
-	url = viper.GetString("basis.url")
-	fmt.Println("图片链接:", url)
+	pixivUserDownUrlRoot = viper.GetString("basis.url")
+	fmt.Println("图片链接:", pixivUserDownUrlRoot)
 }
 
 // 实现一个Pixiv文件下载器
 func downfile(url, filename string) (code, message, downurl string) {
+	// TODO 想个办法优化下这里，先用两个URL顶着
+	downName := filename
 	// 构建一个http请求downtool，携带pixiv的Referer
 	filename = "./photo/" + filename
 	downrequests := http.Client{}
@@ -65,7 +67,8 @@ func downfile(url, filename string) (code, message, downurl string) {
 			return "500", "写入文件失败，错误如下:" + err.Error(), ""
 
 		}
-		return "200", "文件下载成功，文件大小" + strconv.FormatInt(n/1024, 10) + "KB", "这个功能海米写出来"
+		userDownUrl := pixivUserDownUrlRoot + downName
+		return "200", "文件下载成功，文件大小" + strconv.FormatInt(n/1024, 10) + "KB", userDownUrl
 
 	} else if response.StatusCode == 403 { //处理下因为超载导致的问题
 		return "403", "读取PIXIV失败，错误如下:" + err.Error(), ""
@@ -172,15 +175,16 @@ func main() {
 			context.Abort()
 			return
 		}
-		code, message, _ := downfile(downurl, pid+".png")
+		code, message, downurl := downfile(downurl, pid+".png")
 		if code != "200" {
 			context.JSON(200, gin.H{
 				"code":    code,
-				"message": downurl,
+				"message": message,
 			})
 			context.Abort()
 			return
 		}
+		//待优化
 		context.JSON(200, gin.H{
 			"code":    "200",
 			"message": downurl,
