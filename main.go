@@ -4,18 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
 )
-
-// 下载进度条相关，弃用
-type DownPorgress struct {
-	io.Reader
-	NowFileSize    int64
-	FinishFileSize int64
-}
 
 // 下载进度条,暂时弃用
 //func (r *DownPorgress) Read(p []byte) (n int, err error) {
@@ -24,10 +19,29 @@ type DownPorgress struct {
 //	fmt.Printf("当前下载进度 %f\n", float64(r.NowFileSize*10000/r.FinishFileSize)/100)
 //	return
 //}
+var (
+	url = ""
+)
+
+// 配置文件读取器
+func init() {
+	fmt.Println("开始初始化程序")
+	fmt.Println("开始读取配置文件")
+	viper.SetConfigFile("./config/config.yaml")
+	err := viper.ReadInConfig()
+	if err != nil {
+		fmt.Println("初始化失败，没有找到对应的配置文件，程序自动退出")
+		panic("ERROR:NOT HAVE CONFIG")
+	}
+	fmt.Println("读取配置文件成功，正在处理")
+	url = viper.GetString("basis.url")
+	fmt.Println("图片链接:", url)
+}
 
 // 实现一个Pixiv文件下载器
 func downfile(url, filename string) (code, message, downurl string) {
 	// 构建一个http请求downtool，携带pixiv的Referer
+	filename = "./photo/" + filename
 	downrequests := http.Client{}
 	pixivRequest, _ := http.NewRequest("GET", url, nil)
 	//加入header头
@@ -51,12 +65,13 @@ func downfile(url, filename string) (code, message, downurl string) {
 			return "500", "写入文件失败，错误如下:" + err.Error(), ""
 
 		}
-		return "200", "文件下载成功，文件大小" + string(n), "这个功能海米写出来"
+		return "200", "文件下载成功，文件大小" + strconv.FormatInt(n/1024, 10) + "KB", "这个功能海米写出来"
 
 	} else if response.StatusCode == 403 { //处理下因为超载导致的问题
 		return "403", "读取PIXIV失败，错误如下:" + err.Error(), ""
+	} else {
 	}
-	return "200", "开发中", "开发中"
+	return "400", "未知原因下载失败", ""
 }
 
 // 实现一个Pixiv链接信息解析（外部版本）
@@ -84,9 +99,8 @@ func parsPixivInfo(pid string) (code, message string, responBody parePixivReturn
 	responJson := parePixivJson{}
 	err = json.Unmarshal(all, &responJson)
 	if err != nil {
-		return "500", fmt.Sprint("错误，解析json信息失败，错误信息:", err.Error()), *returnInfo
+		return "500", fmt.Sprint("错误，解析json信息失败"), *returnInfo
 	}
-	fmt.Println(responJson)
 
 	returnInfo.Pid = responJson.Body.IllustId
 	returnInfo.Name = responJson.Body.Title
@@ -120,6 +134,7 @@ func parPixivPid(pid string) (code, url string) {
 	responJson := parePixivJson{}
 	err = json.Unmarshal(respon, &responJson)
 	if err != nil {
+		fmt.Println(err)
 		return "500", "解析json失败"
 	}
 	if responJson.Body.Urls.Original == "" {
@@ -137,24 +152,22 @@ func main() {
 	})
 	//实现一个GIN路由组，该组负责接收下载的文件
 	pixivServer := server.Group("/pixiv")
-	//pixivServer.GET("/get/down/img", func(context *gin.Context) {
-	//	fmt.Printf("进入")
-	//	pid := context.Query("pid")
-	//	fmt.Printf(pid)
-	//	resultCode, message, respone := parsPixivInfo(pid)
-	//	context.JSON(200, gin.H{
-	//		"code":    resultCode,
-	//		"message": message,
-	//		"body":    respone,
-	//	})
-	//})
+	pixivServer.GET("/get/pare/img", func(context *gin.Context) {
+		pid := context.Query("pid")
+		resultCode, message, respone := parsPixivInfo(pid)
+		context.JSON(200, gin.H{
+			"code":    resultCode,
+			"message": message,
+			"body":    respone,
+		})
+	})
 	pixivServer.GET("/get/down/img", func(context *gin.Context) {
 		pid := context.Query("pid")
 		code, downurl := parPixivPid(pid)
 		if code != "200" {
 			context.JSON(200, gin.H{
-				"code":    "400",
-				"message": "获取指定图片失败",
+				"code":    code,
+				"message": downurl,
 			})
 			context.Abort()
 			return
@@ -162,15 +175,15 @@ func main() {
 		code, message, _ := downfile(downurl, pid+".png")
 		if code != "200" {
 			context.JSON(200, gin.H{
-				"code":    "400",
-				"message": "获取指定图片失败",
+				"code":    code,
+				"message": downurl,
 			})
 			context.Abort()
 			return
 		}
 		context.JSON(200, gin.H{
 			"code":    "200",
-			"message": "获取图片成功",
+			"message": downurl,
 			"body":    message,
 		})
 		context.Abort()

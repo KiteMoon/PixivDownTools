@@ -39,7 +39,7 @@ type parePixivJson struct {
 		CommentCount            int           `json:"commentCount"`
 		ResponseCount           int           `json:"responseCount"`
 		ViewCount               int           `json:"viewCount"`
-		BookStyle               string        `json:"bookStyle"`
+		BookStyle               int           `json:"bookStyle"`
 		IsHowto                 bool          `json:"isHowto"`
 		IsOriginal              bool          `json:"isOriginal"`
 		ImageResponseOutData    []interface{} `json:"imageResponseOutData"`
