@@ -1,5 +1,6 @@
 basis:
   url:
+  PhotoPath:
 logconfig:
   LogPath:
   MaxSize:
