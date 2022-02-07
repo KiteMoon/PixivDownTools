@@ -1,5 +1,10 @@
 package main
 
+type testParePixiv struct {
+	Error   bool        `json:"error"`
+	Message string      `json:"message"`
+	Body    interface{} `json:"body"`
+}
 type parePixivJson struct {
 	Error   bool   `json:"error"`
 	Message string `json:"message"`
@@ -76,4 +81,12 @@ type parePixivReturn struct {
 type pixivDownUrl struct {
 	Mini     string
 	Original string
+}
+
+// 日志库配置文件实现
+type logConfigStruct struct {
+	LogPath    string
+	MaxSize    int
+	MaxSaveAge int
+	MaxBackup  int
 }
