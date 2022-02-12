@@ -233,6 +233,22 @@ func pixivDownFile(context *gin.Context) {
 	context.Abort()
 }
 
+// 新API实现的下载接口，无法判断作品信息，只能下载
+func pixivDownDirectFile(context *gin.Context) {
+	// 读取ur传递得到参数
+	pid := context.Query("pid")
+	// 处理链接
+	pixivUrl := fmt.Sprintf("https://www.pixiv.net/ajax/illust/%s/pages?lang=zh", pid)
+	// 构建HTTP请求器
+	pixivReClient := http.Client{}
+	pixivRequest, err := http.NewRequest("GET", pixivUrl, nil)
+	if err != nil {
+		context.JSON(200, gin.H{})
+		//return "500", fmt.Sprint("错误，构建解析请求失败，错误信息:", err.Error()), *returnInfo
+	}
+	pixivReClient.Do(pixivRequest)
+}
+
 // 实现一个Pixiv链接信息解析（外部版本）
 func parsPixivInfo(pid string) (code, message string, responBody parePixivReturn) {
 	returnInfo := new(parePixivReturn)
