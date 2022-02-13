@@ -82,6 +82,44 @@ type pixivDownUrl struct {
 	Mini     string
 	Original string
 }
+type PixivDirectPareBodyListUrl struct {
+	ThumbMini string `json:"thumb_mini"`
+	Small     string `json:"small"`
+	Regular   string `json:"regular"`
+	Original  string `json:"original"`
+}
+type PixivDirectPareBodyList struct {
+	Urls   PixivDirectPareBodyListUrl `json:"urls"`
+	Width  int                        `json:"width"`
+	Height int                        `json:"height"`
+}
+type PixivDirectPare struct {
+	Error   bool                      `json:"error"`
+	Message string                    `json:"message"`
+	Body    []PixivDirectPareBodyList `json:"body"`
+}
+
+// 多PAGE下载器
+type PidDownToolsMore struct {
+	Name string
+	Num  int `json:"num"`
+	Body []PidDownToolsMoreBody
+}
+
+// 多PAGE下载器Body部分（复用）
+type PidDownToolsMoreBody struct {
+	Url    string
+	Width  int
+	Height int
+}
+
+// 多PAGE下载器传回端
+type PidDownToolsRespon struct {
+	Num        int `json:"num"`
+	SuccessNum int `json:"success"`
+	ErrorNum   int `json:"errorNum"`
+	Body       []PidDownToolsMoreBody
+}
 
 // 日志库配置文件实现
 type logConfigStruct struct {

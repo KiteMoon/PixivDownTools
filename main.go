@@ -171,6 +171,71 @@ func downfile(filename, url string) (code, message, downurl string) {
 	return "400", "未知原因下载失败", ""
 }
 
+// PIXIV多P下载器
+func pixivDownMore(pixivDownToolsData PidDownToolsMore) (respon PidDownToolsRespon) {
+	// TODO 想个办法优化下这里，先用两个URL顶着
+	responData := PidDownToolsRespon{}
+	for i := 0; i < pixivDownToolsData.Num; i++ {
+		downName := fmt.Sprintf("%s_%d.png", pixivDownToolsData.Name, i)
+		// 构建一个http请求downtool，携带pixiv的Referer
+		filename := "./" + downName
+		downrequests := http.Client{}
+		pixivRequest, _ := http.NewRequest("GET", pixivDownToolsData.Body[i].Url, nil)
+		//加入header头
+		pixivRequest.Header.Add("referer", "https://www.pixiv.net/")
+		pixivRequest.Header.Add("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.99 Safari/537.36")
+		//发起请求，取得信息
+		response, err := downrequests.Do(pixivRequest)
+		if err != nil {
+			fmt.Println(err.Error())
+			responData.ErrorNum++
+			responData.Num++
+			serverLog.Warn("下载失败，发起请求失败，错误原因:" + err.Error())
+			continue
+		}
+		if response.StatusCode == 200 {
+			file, err := os.Create(filename)
+			if err != nil {
+				responData.ErrorNum++
+				responData.Num++
+				fmt.Println("下载失败")
+				serverLog.Warn("下载失败，OS创建错误，错误原因:" + err.Error())
+				continue
+			}
+			defer file.Close()
+			// TODO 这里后面可以写个东西，判断下下载大小，防止蜜罐
+			_, err = io.Copy(file, response.Body)
+			if err != nil {
+				responData.ErrorNum++
+				responData.Num++
+				serverLog.Warn("下载失败，复制失败，错误原因:" + err.Error())
+				continue
+			}
+			userDownUrl := pixivUserDownUrlRoot + downName
+			serverLog.Info("文件写入成功，写入文件名" + downName)
+			responData.Body = append(responData.Body, PidDownToolsMoreBody{
+				Url:    userDownUrl,
+				Width:  pixivDownToolsData.Body[i].Width,
+				Height: pixivDownToolsData.Body[i].Height,
+			})
+			responData.Num++
+			responData.SuccessNum++
+			continue
+		} else if response.StatusCode == 403 { //处理下因为超载导致的问题
+			responData.Num++
+			responData.ErrorNum++
+			serverLog.Warn("下载失败，请求Pixiv返回不正确代码，错误代码:" + string(response.StatusCode))
+			continue
+		} else {
+			responData.Num++
+			responData.ErrorNum++
+			serverLog.Warn("下载失败，请求Pixiv返回不正确代码403，错误原因:" + string(response.StatusCode))
+			continue
+		}
+	}
+	return responData
+}
+
 // 实现Pixiv下载的全部接口
 func pixivDownFile(context *gin.Context) {
 	// 获取用户请求
@@ -237,16 +302,82 @@ func pixivDownFile(context *gin.Context) {
 func pixivDownDirectFile(context *gin.Context) {
 	// 读取ur传递得到参数
 	pid := context.Query("pid")
+	filename := pid + ".png"
+
+	// 检测缓存
+	code, url := cacheTest(pid)
+	if code == "201" {
+		context.JSON(200, gin.H{
+			"code":     "201",
+			"filename": filename,
+			"message":  "命中缓存，已上传CDN",
+			"body":     url,
+		})
+		context.Abort()
+		return
+	}
+
 	// 处理链接
 	pixivUrl := fmt.Sprintf("https://www.pixiv.net/ajax/illust/%s/pages?lang=zh", pid)
 	// 构建HTTP请求器
 	pixivReClient := http.Client{}
 	pixivRequest, err := http.NewRequest("GET", pixivUrl, nil)
 	if err != nil {
-		context.JSON(200, gin.H{})
-		//return "500", fmt.Sprint("错误，构建解析请求失败，错误信息:", err.Error()), *returnInfo
+		context.JSON(200, gin.H{
+			"code":    "500",
+			"message": fmt.Sprint("错误，构建解析请求失败，错误信息:", err.Error()),
+		})
+		context.Abort()
+		return
 	}
-	pixivReClient.Do(pixivRequest)
+	requestData, err := pixivReClient.Do(pixivRequest)
+	if err != nil {
+		context.JSON(200, gin.H{
+			"code":    "500",
+			"message": fmt.Sprint("错误，发送请求，错误信息:", err.Error()),
+		})
+		context.Abort()
+		return
+	}
+	requestDataString, err := ioutil.ReadAll(requestData.Body)
+	if err != nil {
+		context.JSON(200, gin.H{
+			"code":    "500",
+			"message": fmt.Sprint("错误，字节流解析为字符串失败:", err.Error()),
+		})
+		context.Abort()
+		return
+	}
+	pixivResponData := new(PixivDirectPare)
+	err = json.Unmarshal(requestDataString, pixivResponData)
+	if err != nil {
+		context.JSON(200, gin.H{
+			"code":    "500",
+			"message": fmt.Sprint("错误，解析JSON失败，错误原因:", err.Error()),
+		})
+		context.Abort()
+		return
+	}
+	pixivDownToolsData := PidDownToolsMore{}
+	pixivDownToolsData.Name = pid
+	pixivDownToolsData.Num = len(pixivResponData.Body)
+	for i := 0; i < len(pixivResponData.Body); i++ {
+		pixivDownToolsData.Body = append(pixivDownToolsData.Body, PidDownToolsMoreBody{
+			Url:    pixivResponData.Body[i].Urls.Original,
+			Width:  pixivResponData.Body[i].Height,
+			Height: pixivResponData.Body[i].Height,
+		})
+	}
+	responBody := (pixivDownMore(pixivDownToolsData))
+	responData := gin.H{
+		"body":     responBody.Body,
+		"code":     "200",
+		"filename": "包含复数图片，请查看body",
+		"message":  "包含复数图片，请查看body",
+		"下载成功数:":   responBody.SuccessNum,
+		"下载失败数:":   responBody.ErrorNum,
+	}
+	context.JSON(200, responData)
 }
 
 // 实现一个Pixiv链接信息解析（外部版本）
@@ -309,9 +440,8 @@ func parsPixivInfo(pid string) (code, message string, responBody parePixivReturn
 	return "200", "OK", *returnInfo
 }
 
-// 实现一个Pixiv链接信息解析（内部版本）
-func parPixivPid(pid string) (code, url string) {
-
+// 读取是否存在缓存
+func cacheTest(pid string) (code, url string) {
 	dir, err := ioutil.ReadDir(pixivPhotoPath)
 	filename := pid + ".png"
 	if err != nil {
@@ -319,9 +449,17 @@ func parPixivPid(pid string) (code, url string) {
 	}
 	for i := 0; i < len(dir); i++ {
 		if (dir[i].Name()) == filename {
-
 			return "201", pixivUserDownUrlRoot + filename
 		}
+	}
+	return "404", "no cache"
+}
+
+// 实现一个Pixiv链接信息解析（内部版本）
+func parPixivPid(pid string) (code, url string) {
+	cacheCode, url := cacheTest(pid)
+	if cacheCode == "200" {
+		return "201", url
 	}
 	parsUrl := fmt.Sprint("https://www.pixiv.net/ajax/illust/", pid)
 	pareRequestsClient := http.Client{}
@@ -383,7 +521,9 @@ func main() {
 	pixivServer.GET("/get/down/img", func(context *gin.Context) {
 		pixivDownFile(context)
 	})
-
+	pixivServer.GET("/get/down/plural/img", func(context *gin.Context) {
+		pixivDownDirectFile(context)
+	})
 	server.Run("0.0.0.0:4560")
 
 	//for {
